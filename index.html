@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fuel Tracker – Rifornimenti & Manutenzione</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface2: #243044;
+      --border: #2d3a4f;
+      --text: #e8eef7;
+      --text-muted: #8b9cb3;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .app { max-width: 1100px; margin: 0 auto; padding: 1.25rem; }
+    header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+    header h1 span { color: var(--primary); }
+    .tabs {
+      display: flex; gap: 0.35rem; background: var(--surface); padding: 0.35rem;
+      border-radius: var(--radius); flex-wrap: wrap;
+    }
+    .tab {
+      padding: 0.5rem 1rem; border: none; background: transparent; color: var(--text-muted);
+      border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 0.9rem; transition: all 0.15s;
+    }
+    .tab:hover { color: var(--text); background: var(--surface2); }
+    .tab.active { background: var(--primary); color: white; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.25rem; margin-bottom: 1.25rem;
+    }
+    .card h2 { font-size: 1.1rem; margin-bottom: 1rem; font-weight: 600; }
+    .grid { display: grid; gap: 1rem; }
+    .grid-2 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; font-weight: 500; }
+    input, select, textarea {
+      width: 100%; padding: 0.6rem 0.75rem; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 0.95rem; font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+    }
+    .btn {
+      padding: 0.55rem 1.1rem; border: none; border-radius: 8px; font-weight: 600; font-size: 0.9rem;
+      cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 0.4rem;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+    .btn-sm { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+    .vehicle-select {
+      display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+    }
+    .vehicle-select select { min-width: 180px; }
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem;
+    }
+    .stat {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1rem;
+      text-align: center;
+    }
+    .stat .value { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
+    .stat .label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 0.7rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .actions { display: flex; gap: 0.35rem; }
+    .badge {
+      display: inline-block; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;
+    }
+    .badge-benzina { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .badge-gasolio { background: rgba(245,158,11,0.2); color: #fbbf24; }
+    .badge-metano { background: rgba(16,185,129,0.2); color: #34d399; }
+    .empty { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: center;
+      justify-content: center; z-index: 100; padding: 1rem;
+    }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.5rem; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal h3 { margin-bottom: 1.25rem; font-size: 1.15rem; }
+    .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.25rem; }
+    .form-row { margin-bottom: 0.9rem; }
+    .chart-container { position: relative; height: 260px; margin-top: 0.5rem; }
+    .flex { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .mt-1 { margin-top: 0.5rem; }
+    .mb-1 { margin-bottom: 0.5rem; }
+    @media (max-width: 600px) {
+      .app { padding: 0.75rem; }
+      th, td { padding: 0.5rem 0.35rem; font-size: 0.82rem; }
+      .stat .value { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="app">
+    <header>
+      <h1>⛽ <span>Fuel</span> Tracker</h1>
+      <div class="vehicle-select">
+        <select v-model="selectedVehicleId" @change="onVehicleChange">
+          <option disabled value="">Seleziona veicolo</option>
+          <option v-for="v in vehicles" :key="v.id" :value="v.id">{{ v.name }} ({{ v.plate || '—' }})</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" @click="openVehicleModal()">+ Veicolo</button>
+        <button v-if="selectedVehicle" class="btn btn-ghost btn-sm" @click="openVehicleModal(selectedVehicle)">✏️</button>
+      </div>
+    </header>
+
+    <div v-if="!selectedVehicle" class="card empty">
+      <p>Nessun veicolo selezionato.</p>
+      <p class="mt-1">Crea il primo veicolo per iniziare a registrare rifornimenti e manutenzioni.</p>
+      <button class="btn btn-primary mt-1" @click="openVehicleModal()">+ Aggiungi veicolo</button>
+    </div>
+
+    <template v-else>
+      <div class="tabs">
+        <button class="tab" :class="{active: tab==='rifornimenti'}" @click="tab='rifornimenti'">Rifornimenti</button>
+        <button class="tab" :class="{active: tab==='manutenzione'}" @click="tab='manutenzione'">Manutenzione</button>
+        <button class="tab" :class="{active: tab==='statistiche'}" @click="tab='statistiche'">Statistiche</button>
+      </div>
+
+      <!-- RIFORNIMENTI -->
+      <div v-show="tab==='rifornimenti'">
+        <div class="card">
+          <div class="flex" style="justify-content:space-between;margin-bottom:1rem">
+            <h2 style="margin:0">Rifornimenti</h2>
+            <button class="btn btn-primary btn-sm" @click="openFuelModal()">+ Nuovo</button>
+          </div>
+          <div v-if="fuelLogs.length===0" class="empty">Nessun rifornimento registrato.</div>
+          <div v-else style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Km</th>
+                  <th>Quantità</th>
+                  <th>Tipo</th>
+                  <th>Prezzo</th>
+                  <th>Spesa</th>
+                  <th>Consumo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="f in fuelLogsSorted" :key="f.id">
+                  <td>{{ formatDate(f.date) }}</td>
+                  <td>{{ f.km.toLocaleString('it-IT') }}</td>
+                  <td>{{ f.quantity }} {{ f.unit }}</td>
+                  <td><span class="badge" :class="'badge-'+f.type">{{ fuelLabel(f.type) }}</span></td>
+                  <td>{{ formatMoney(f.price) }}/{{ f.unit }}</td>
+                  <td>{{ formatMoney(f.cost) }}</td>
+                  <td>{{ f.consumption != null ? f.consumption + ' km/' + f.unit : '—' }}</td>
+                  <td class="actions">
+                    <button class="btn btn-ghost btn-sm" @click="openFuelModal(f)">✏️</button>
+                    <button class="btn btn-ghost btn-sm" @click="deleteFuel(f.id)">🗑️</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- MANUTENZIONE -->
+      <div v-show="tab==='manutenzione'">
+        <div class="card">
+          <div class="flex" style="justify-content:space-between;margin-bottom:1rem">
+            <h2 style="margin:0">Spese di manutenzione</h2>
+            <button class="btn btn-primary btn-sm" @click="openMaintModal()">+ Nuova</button>
+          </div>
+          <div v-if="maintLogs.length===0" class="empty">Nessuna spesa di manutenzione.</div>
+          <div v-else style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Km</th>
+                  <th>Descrizione</th>
+                  <th>Categoria</th>
+                  <th>Spesa</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="m in maintLogsSorted" :key="m.id">
+                  <td>{{ formatDate(m.date) }}</td>
+                  <td>{{ m.km ? m.km.toLocaleString('it-IT') : '—' }}</td>
+                  <td>{{ m.description }}</td>
+                  <td>{{ m.category || '—' }}</td>
+                  <td>{{ formatMoney(m.cost) }}</td>
+                  <td class="actions">
+                    <button class="btn btn-ghost btn-sm" @click="openMaintModal(m)">✏️</button>
+                    <button class="btn btn-ghost btn-sm" @click="deleteMaint(m.id)">🗑️</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATISTICHE -->
+      <div v-show="tab==='statistiche'">
+        <div class="card">
+          <h2>Panoramica – {{ selectedVehicle.name }}</h2>
+          <div class="stats-grid">
+            <div class="stat">
+              <div class="value">{{ stats.totalKm.toLocaleString('it-IT') }}</div>
+              <div class="label">Km totali</div>
+            </div>
+            <div class="stat">
+              <div class="value">{{ stats.avgConsumption }}</div>
+              <div class="label">Consumo medio (km/u)</div>
+            </div>
+            <div class="stat">
+              <div class="value">{{ formatMoney(stats.totalFuelCost) }}</div>
+              <div class="label">Spesa carburante</div>
+            </div>
+            <div class="stat">
+              <div class="value">{{ formatMoney(stats.totalMaintCost) }}</div>
+              <div class="label">Spesa manutenzione</div>
+            </div>
+            <div class="stat">
+              <div class="value">{{ formatMoney(stats.totalCost) }}</div>
+              <div class="label">Spesa totale</div>
+            </div>
+            <div class="stat">
+              <div class="value">{{ formatMoney(stats.costPerKm) }}</div>
+              <div class="label">€ / km</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" v-if="fuelLogs.length >= 2">
+          <h2>Andamento consumi</h2>
+          <div class="chart-container">
+            <canvas ref="chartCanvas"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Importa / Esporta</h2>
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.75rem">
+            Importa il CSV esportato da SpritMonitor (separatore punto e virgola). I rifornimenti Metano/Benzina e le spese di manutenzione verranno riconosciuti automaticamente.
+          </p>
+          <div class="flex" style="margin-bottom:0.75rem">
+            <label class="btn btn-primary" style="cursor:pointer">
+              📥 Importa CSV SpritMonitor
+              <input type="file" accept=".csv,text/csv" @change="importSpritMonitorCSV" style="display:none" />
+            </label>
+          </div>
+          <div class="flex">
+            <button class="btn btn-ghost" @click="exportCSV('fuel')">Esporta rifornimenti (CSV)</button>
+            <button class="btn btn-ghost" @click="exportCSV('maint')">Esporta manutenzioni (CSV)</button>
+            <button class="btn btn-ghost" @click="exportCSV('spritmonitor')">Esporta formato SpritMonitor</button>
+          </div>
+          <p v-if="importMessage" style="margin-top:0.75rem;font-size:0.9rem" :style="{color: importOk ? 'var(--success)' : 'var(--danger)'}">{{ importMessage }}</p>
+        </div>
+      </div>
+    </template>
+
+    <!-- MODAL VEICOLO -->
+    <div v-if="showVehicleModal" class="modal-overlay" @click.self="showVehicleModal=false">
+      <div class="modal">
+        <h3>{{ editingVehicle ? 'Modifica veicolo' : 'Nuovo veicolo' }}</h3>
+        <div class="form-row">
+          <label>Nome *</label>
+          <input v-model="vehicleForm.name" placeholder="es. Fiat Panda" />
+        </div>
+        <div class="form-row">
+          <label>Targa</label>
+          <input v-model="vehicleForm.plate" placeholder="es. AB123CD" />
+        </div>
+        <div class="form-row">
+          <label>Note</label>
+          <textarea v-model="vehicleForm.notes" rows="2"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button v-if="editingVehicle" class="btn btn-danger" @click="deleteVehicle">Elimina</button>
+          <button class="btn btn-ghost" @click="showVehicleModal=false">Annulla</button>
+          <button class="btn btn-primary" @click="saveVehicle">Salva</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL RIFORNIMENTO -->
+    <div v-if="showFuelModal" class="modal-overlay" @click.self="showFuelModal=false">
+      <div class="modal">
+        <h3>{{ editingFuel ? 'Modifica rifornimento' : 'Nuovo rifornimento' }}</h3>
+        <div class="form-row">
+          <label>Data *</label>
+          <input type="date" v-model="fuelForm.date" />
+        </div>
+        <div class="form-row">
+          <label>Km totali *</label>
+          <input type="number" v-model.number="fuelForm.km" min="0" step="1" />
+        </div>
+        <div class="form-row">
+          <label>Tipo carburante *</label>
+          <select v-model="fuelForm.type">
+            <option value="benzina">Benzina</option>
+            <option value="gasolio">Gasolio</option>
+            <option value="metano">Metano</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Quantità * ({{ fuelForm.type === 'metano' ? 'kg' : 'litri' }})</label>
+          <input type="number" v-model.number="fuelForm.quantity" min="0" step="0.01" />
+        </div>
+        <div class="form-row">
+          <label>Spesa totale (€)</label>
+          <input type="number" v-model.number="fuelForm.cost" min="0" step="0.01" @input="calcPriceFromCost" />
+        </div>
+        <div class="form-row">
+          <label>Prezzo unitario (€/{{ fuelForm.type === 'metano' ? 'kg' : 'l' }})</label>
+          <input type="number" v-model.number="fuelForm.price" min="0" step="0.001" @input="calcCostFromPrice" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" @click="showFuelModal=false">Annulla</button>
+          <button class="btn btn-primary" @click="saveFuel">Salva</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL MANUTENZIONE -->
+    <div v-if="showMaintModal" class="modal-overlay" @click.self="showMaintModal=false">
+      <div class="modal">
+        <h3>{{ editingMaint ? 'Modifica manutenzione' : 'Nuova spesa manutenzione' }}</h3>
+        <div class="form-row">
+          <label>Data *</label>
+          <input type="date" v-model="maintForm.date" />
+        </div>
+        <div class="form-row">
+          <label>Km (opzionale)</label>
+          <input type="number" v-model.number="maintForm.km" min="0" step="1" />
+        </div>
+        <div class="form-row">
+          <label>Descrizione *</label>
+          <input v-model="maintForm.description" placeholder="es. Cambio olio, pastiglie freni..." />
+        </div>
+        <div class="form-row">
+          <label>Categoria</label>
+          <select v-model="maintForm.category">
+            <option value="">—</option>
+            <option>Tagliando</option>
+            <option>Freni</option>
+            <option>Gomme</option>
+            <option>Olio</option>
+            <option>Batteria</option>
+            <option>Carrozzeria</option>
+            <option>Assicurazione</option>
+            <option>Bollo</option>
+            <option>Altro</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Spesa (€) *</label>
+          <input type="number" v-model.number="maintForm.cost" min="0" step="0.01" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" @click="showMaintModal=false">Annulla</button>
+          <button class="btn btn-primary" @click="saveMaint">Salva</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed, watch, nextTick, onMounted } = Vue;
+
+    const STORAGE_KEY = 'fuel-tracker-v1';
+
+    function uid() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      return { vehicles: [], fuel: [], maint: [] };
+    }
+
+    function saveData(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    createApp({
+      setup() {
+        const data = loadData();
+        const vehicles = ref(data.vehicles || []);
+        const allFuel = ref(data.fuel || []);
+        const allMaint = ref(data.maint || []);
+        const selectedVehicleId = ref(vehicles.value[0]?.id || '');
+        const tab = ref('rifornimenti');
+
+        const showVehicleModal = ref(false);
+        const showFuelModal = ref(false);
+        const showMaintModal = ref(false);
+        const editingVehicle = ref(null);
+        const editingFuel = ref(null);
+        const editingMaint = ref(null);
+
+        const vehicleForm = ref({ name: '', plate: '', notes: '' });
+        const fuelForm = ref({ date: '', km: null, quantity: null, type: 'benzina', cost: null, price: null });
+        const maintForm = ref({ date: '', km: null, description: '', category: '', cost: null });
+        const importMessage = ref('');
+        const importOk = ref(true);
+
+        const chartCanvas = ref(null);
+        let chartInstance = null;
+
+        const selectedVehicle = computed(() =>
+          vehicles.value.find(v => v.id === selectedVehicleId.value) || null
+        );
+
+        const fuelLogs = computed(() =>
+          allFuel.value.filter(f => f.vehicleId === selectedVehicleId.value)
+        );
+        const maintLogs = computed(() =>
+          allMaint.value.filter(m => m.vehicleId === selectedVehicleId.value)
+        );
+
+        const fuelLogsSorted = computed(() => {
+          const logs = [...fuelLogs.value].sort((a, b) => b.km - a.km);
+          // compute consumption
+          const sortedAsc = [...fuelLogs.value].sort((a, b) => a.km - b.km);
+          for (let i = 1; i < sortedAsc.length; i++) {
+            const prev = sortedAsc[i - 1];
+            const curr = sortedAsc[i];
+            if (curr.quantity > 0 && curr.km > prev.km) {
+              curr.consumption = +((curr.km - prev.km) / curr.quantity).toFixed(2);
+            } else {
+              curr.consumption = null;
+            }
+          }
+          return logs;
+        });
+
+        const maintLogsSorted = computed(() =>
+          [...maintLogs.value].sort((a, b) => new Date(b.date) - new Date(a.date))
+        );
+
+        const stats = computed(() => {
+          const fuels = fuelLogs.value;
+          const maints = maintLogs.value;
+          let totalKm = 0;
+          if (fuels.length) {
+            totalKm = Math.max(...fuels.map(f => f.km));
+          }
+          const totalFuelCost = fuels.reduce((s, f) => s + (f.cost || 0), 0);
+          const totalMaintCost = maints.reduce((s, f) => s + (f.cost || 0), 0);
+          const totalCost = totalFuelCost + totalMaintCost;
+
+          // average consumption: total km driven / total quantity (from first to last)
+          let avgConsumption = '—';
+          const sorted = [...fuels].sort((a, b) => a.km - b.km);
+          if (sorted.length >= 2) {
+            const kmDriven = sorted[sorted.length - 1].km - sorted[0].km;
+            // quantity of all but first (or all after first)
+            const qty = sorted.slice(1).reduce((s, f) => s + (f.quantity || 0), 0);
+            if (qty > 0) avgConsumption = (kmDriven / qty).toFixed(2);
+          }
+
+          const costPerKm = totalKm > 0 ? (totalCost / totalKm) : 0;
+
+          return {
+            totalKm,
+            avgConsumption,
+            totalFuelCost,
+            totalMaintCost,
+            totalCost,
+            costPerKm
+          };
+        });
+
+        function persist() {
+          saveData({
+            vehicles: vehicles.value,
+            fuel: allFuel.value,
+            maint: allMaint.value
+          });
+        }
+
+        function onVehicleChange() {
+          tab.value = 'rifornimenti';
+          nextTick(updateChart);
+        }
+
+        function formatDate(d) {
+          if (!d) return '—';
+          const [y, m, day] = d.split('-');
+          return `${day}/${m}/${y}`;
+        }
+        function formatMoney(n) {
+          if (n == null || isNaN(n)) return '—';
+          return '€ ' + Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function fuelLabel(t) {
+          return { benzina: 'Benzina', gasolio: 'Gasolio', metano: 'Metano' }[t] || t;
+        }
+
+        // VEHICLE
+        function openVehicleModal(v = null) {
+          editingVehicle.value = v;
+          if (v) {
+            vehicleForm.value = { name: v.name, plate: v.plate || '', notes: v.notes || '' };
+          } else {
+            vehicleForm.value = { name: '', plate: '', notes: '' };
+          }
+          showVehicleModal.value = true;
+        }
+        function saveVehicle() {
+          if (!vehicleForm.value.name.trim()) return alert('Inserisci il nome del veicolo');
+          if (editingVehicle.value) {
+            const idx = vehicles.value.findIndex(x => x.id === editingVehicle.value.id);
+            if (idx >= 0) {
+              vehicles.value[idx] = { ...vehicles.value[idx], ...vehicleForm.value };
+            }
+          } else {
+            const id = uid();
+            vehicles.value.push({ id, ...vehicleForm.value });
+            selectedVehicleId.value = id;
+          }
+          persist();
+          showVehicleModal.value = false;
+        }
+        function deleteVehicle() {
+          if (!confirm('Eliminare il veicolo e tutti i suoi dati?')) return;
+          const id = editingVehicle.value.id;
+          vehicles.value = vehicles.value.filter(v => v.id !== id);
+          allFuel.value = allFuel.value.filter(f => f.vehicleId !== id);
+          allMaint.value = allMaint.value.filter(m => m.vehicleId !== id);
+          selectedVehicleId.value = vehicles.value[0]?.id || '';
+          persist();
+          showVehicleModal.value = false;
+        }
+
+        // FUEL
+        function openFuelModal(f = null) {
+          editingFuel.value = f;
+          if (f) {
+            fuelForm.value = {
+              date: f.date,
+              km: f.km,
+              quantity: f.quantity,
+              type: f.type,
+              cost: f.cost,
+              price: f.price
+            };
+          } else {
+            const today = new Date().toISOString().slice(0, 10);
+            fuelForm.value = { date: today, km: null, quantity: null, type: 'benzina', cost: null, price: null };
+          }
+          showFuelModal.value = true;
+        }
+        function calcPriceFromCost() {
+          const q = fuelForm.value.quantity;
+          const c = fuelForm.value.cost;
+          if (q > 0 && c != null) fuelForm.value.price = +(c / q).toFixed(3);
+        }
+        function calcCostFromPrice() {
+          const q = fuelForm.value.quantity;
+          const p = fuelForm.value.price;
+          if (q > 0 && p != null) fuelForm.value.cost = +(q * p).toFixed(2);
+        }
+        function saveFuel() {
+          const f = fuelForm.value;
+          if (!f.date || f.km == null || !f.quantity || f.quantity <= 0) {
+            return alert('Compila data, km e quantità');
+          }
+          const unit = f.type === 'metano' ? 'kg' : 'l';
+          const payload = {
+            id: editingFuel.value?.id || uid(),
+            vehicleId: selectedVehicleId.value,
+            date: f.date,
+            km: f.km,
+            quantity: f.quantity,
+            type: f.type,
+            unit,
+            cost: f.cost ?? (f.price != null ? +(f.quantity * f.price).toFixed(2) : 0),
+            price: f.price ?? (f.cost != null && f.quantity ? +(f.cost / f.quantity).toFixed(3) : 0)
+          };
+          if (editingFuel.value) {
+            const idx = allFuel.value.findIndex(x => x.id === editingFuel.value.id);
+            if (idx >= 0) allFuel.value[idx] = payload;
+          } else {
+            allFuel.value.push(payload);
+          }
+          persist();
+          showFuelModal.value = false;
+          nextTick(updateChart);
+        }
+        function deleteFuel(id) {
+          if (!confirm('Eliminare questo rifornimento?')) return;
+          allFuel.value = allFuel.value.filter(f => f.id !== id);
+          persist();
+          nextTick(updateChart);
+        }
+
+        // MAINT
+        function openMaintModal(m = null) {
+          editingMaint.value = m;
+          if (m) {
+            maintForm.value = {
+              date: m.date,
+              km: m.km,
+              description: m.description,
+              category: m.category || '',
+              cost: m.cost
+            };
+          } else {
+            const today = new Date().toISOString().slice(0, 10);
+            maintForm.value = { date: today, km: null, description: '', category: '', cost: null };
+          }
+          showMaintModal.value = true;
+        }
+        function saveMaint() {
+          const m = maintForm.value;
+          if (!m.date || !m.description.trim() || m.cost == null) {
+            return alert('Compila data, descrizione e spesa');
+          }
+          const payload = {
+            id: editingMaint.value?.id || uid(),
+            vehicleId: selectedVehicleId.value,
+            date: m.date,
+            km: m.km,
+            description: m.description.trim(),
+            category: m.category || '',
+            cost: m.cost
+          };
+          if (editingMaint.value) {
+            const idx = allMaint.value.findIndex(x => x.id === editingMaint.value.id);
+            if (idx >= 0) allMaint.value[idx] = payload;
+          } else {
+            allMaint.value.push(payload);
+          }
+          persist();
+          showMaintModal.value = false;
+        }
+        function deleteMaint(id) {
+          if (!confirm('Eliminare questa spesa?')) return;
+          allMaint.value = allMaint.value.filter(m => m.id !== id);
+          persist();
+        }
+
+        // CHART
+        function updateChart() {
+          if (!chartCanvas.value || fuelLogs.value.length < 2) {
+            if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+            return;
+          }
+          const sorted = [...fuelLogs.value].sort((a, b) => a.km - b.km);
+          const labels = [];
+          const values = [];
+          for (let i = 1; i < sorted.length; i++) {
+            const prev = sorted[i - 1];
+            const curr = sorted[i];
+            if (curr.quantity > 0 && curr.km > prev.km) {
+              labels.push(formatDate(curr.date));
+              values.push(+((curr.km - prev.km) / curr.quantity).toFixed(2));
+            }
+          }
+          if (chartInstance) chartInstance.destroy();
+          chartInstance = new Chart(chartCanvas.value, {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Consumo (km/unità)',
+                data: values,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59,130,246,0.15)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b9cb3' } },
+                x: { grid: { display: false }, ticks: { color: '#8b9cb3', maxRotation: 45 } }
+              }
+            }
+          });
+        }
+
+        watch(tab, (t) => {
+          if (t === 'statistiche') nextTick(updateChart);
+        });
+
+        // --- Helpers for SpritMonitor CSV ---
+        function parseSpritDate(s) {
+          // formats: d.m.yyyy or dd.mm.yyyy
+          if (!s) return null;
+          const parts = s.trim().split(/[./-]/);
+          if (parts.length !== 3) return null;
+          let d = parseInt(parts[0], 10);
+          let m = parseInt(parts[1], 10);
+          let y = parseInt(parts[2], 10);
+          if (y < 100) y += 2000;
+          if (!d || !m || !y) return null;
+          return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        }
+        function parseNum(s) {
+          if (s == null || s === '') return null;
+          const n = parseFloat(String(s).replace(',', '.').replace(/\s/g, ''));
+          return isNaN(n) ? null : n;
+        }
+        function guessCategory(note) {
+          const n = (note || '').toLowerCase();
+          if (/gomme|pneumatic|ruot/.test(n)) return 'Gomme';
+          if (/tagliando|revisione|bombole/.test(n)) return 'Tagliando';
+          if (/olio|rabbocco/.test(n)) return 'Olio';
+          if (/batteria/.test(n)) return 'Batteria';
+          if (/fren/.test(n)) return 'Freni';
+          if (/diagnost/.test(n)) return 'Altro';
+          return 'Altro';
+        }
+
+        // IMPORT SpritMonitor CSV
+        function importSpritMonitorCSV(ev) {
+          const file = ev.target.files?.[0];
+          if (!file) return;
+          if (!selectedVehicleId.value) {
+            importOk.value = false;
+            importMessage.value = 'Seleziona o crea prima un veicolo, poi importa.';
+            ev.target.value = '';
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const text = e.target.result;
+              const lines = text.split(/\r?\n/).filter(l => l.trim());
+              if (lines.length < 2) throw new Error('File vuoto o non valido');
+
+              // Detect delimiter
+              const header = lines[0];
+              const delim = header.includes(';') ? ';' : ',';
+              const cols = header.split(delim).map(c => c.trim().replace(/^"|"$/g, ''));
+
+              // Map column indices (case-insensitive)
+              const idx = {};
+              cols.forEach((c, i) => {
+                const k = c.toLowerCase();
+                if (k === 'date' || k === 'datum') idx.date = i;
+                else if (k === 'odometer' || k === 'km-stand' || k === 'km') idx.odometer = i;
+                else if (k.includes('trip')) idx.trip = i;
+                else if (k === 'quantity' || k === 'spritmenge' || k.includes('quantit')) idx.quantity = i;
+                else if (k === 'price' || k === 'kosten' || k === 'cost') idx.price = i;
+                else if (k.includes('fuelling') || k === 'tankart' || k.includes('fueling type')) idx.fuellingType = i;
+                else if (k.includes('fuel sort') || k === 'kraftstoff' || k.includes('fuelsort')) idx.fuelSort = i;
+                else if (k === 'note' || k === 'bemerkung' || k === 'nota') idx.note = i;
+              });
+
+              if (idx.date == null || idx.odometer == null) {
+                throw new Error('Colonne Date e Odometer non trovate. È un CSV SpritMonitor?');
+              }
+
+              let fuelCount = 0, maintCount = 0, skipped = 0;
+              const vid = selectedVehicleId.value;
+
+              for (let li = 1; li < lines.length; li++) {
+                const cells = lines[li].split(delim).map(c => c.trim().replace(/^"|"$/g, ''));
+                const date = parseSpritDate(cells[idx.date]);
+                const km = parseNum(cells[idx.odometer]);
+                if (!date || km == null) { skipped++; continue; }
+
+                const qty = idx.quantity != null ? parseNum(cells[idx.quantity]) : null;
+                const cost = idx.price != null ? parseNum(cells[idx.price]) : null;
+                const fuelSort = idx.fuelSort != null ? String(cells[idx.fuelSort] || '').trim() : '';
+                const fuellingType = idx.fuellingType != null ? String(cells[idx.fuellingType] || '').trim() : '';
+                const note = idx.note != null ? (cells[idx.note] || '').trim() : '';
+
+                // Maintenance: Fuelling Type 0 or Fuel Sort 12
+                const isMaint = fuellingType === '0' || fuelSort === '12';
+                if (isMaint) {
+                  allMaint.value.push({
+                    id: uid(),
+                    vehicleId: vid,
+                    date,
+                    km,
+                    description: note || 'Spesa (importata da SpritMonitor)',
+                    category: guessCategory(note),
+                    cost: cost ?? 0
+                  });
+                  maintCount++;
+                  continue;
+                }
+
+                // Fuel
+                let type = 'metano';
+                if (fuelSort === '7') type = 'benzina';
+                else if (fuelSort === '13') type = 'metano';
+                else if (fuelSort === '1' || fuelSort === '2') type = 'benzina';
+                else if (fuelSort === '3' || fuelSort === '4') type = 'gasolio';
+                // else keep metano (most common in this log)
+
+                const unit = type === 'metano' ? 'kg' : 'l';
+                const quantity = qty != null && qty > 0 ? qty : 0;
+                const price = (quantity > 0 && cost != null) ? +(cost / quantity).toFixed(3) : (cost ?? 0);
+
+                // Skip pure zero rows with no cost
+                if (quantity === 0 && (cost == null || cost === 0) && !note) {
+                  skipped++;
+                  continue;
+                }
+
+                allFuel.value.push({
+                  id: uid(),
+                  vehicleId: vid,
+                  date,
+                  km,
+                  quantity,
+                  type,
+                  unit,
+                  cost: cost ?? 0,
+                  price,
+                  note: note || undefined
+                });
+                fuelCount++;
+              }
+
+              persist();
+              importOk.value = true;
+              importMessage.value = `Importati ${fuelCount} rifornimenti e ${maintCount} spese di manutenzione` +
+                (skipped ? ` (${skipped} righe saltate)` : '') + '.';
+              nextTick(updateChart);
+            } catch (err) {
+              importOk.value = false;
+              importMessage.value = 'Errore import: ' + (err.message || err);
+            }
+            ev.target.value = '';
+          };
+          reader.onerror = () => {
+            importOk.value = false;
+            importMessage.value = 'Impossibile leggere il file.';
+            ev.target.value = '';
+          };
+          reader.readAsText(file, 'UTF-8');
+        }
+
+        // EXPORT
+        function exportCSV(type) {
+          if (!selectedVehicle.value) return;
+          let rows, filename, delim = ',';
+          if (type === 'fuel') {
+            rows = [['Data', 'Km', 'Quantità', 'Unità', 'Tipo', 'Prezzo', 'Spesa']];
+            fuelLogsSorted.value.forEach(f => {
+              rows.push([f.date, f.km, f.quantity, f.unit, f.type, f.price, f.cost]);
+            });
+            filename = `rifornimenti_${selectedVehicle.value.name}.csv`;
+          } else if (type === 'maint') {
+            rows = [['Data', 'Km', 'Descrizione', 'Categoria', 'Spesa']];
+            maintLogsSorted.value.forEach(m => {
+              rows.push([m.date, m.km || '', m.description, m.category || '', m.cost]);
+            });
+            filename = `manutenzione_${selectedVehicle.value.name}.csv`;
+          } else if (type === 'spritmonitor') {
+            // Format compatible with SpritMonitor
+            delim = ';';
+            rows = [['Date', 'Odometer', 'Trip odometer', 'Quantity', 'Price', 'Currency', 'Fuelling Type', 'Fuel Sort', 'Note']];
+            // Merge fuel + maint sorted by date then km
+            const combined = [
+              ...fuelLogs.value.map(f => ({ ...f, _kind: 'fuel' })),
+              ...maintLogs.value.map(m => ({ ...m, _kind: 'maint' }))
+            ].sort((a, b) => {
+              const da = a.date.localeCompare(b.date);
+              return da !== 0 ? da : (a.km || 0) - (b.km || 0);
+            });
+            let prevKm = null;
+            combined.forEach(r => {
+              const d = r.date; // yyyy-mm-dd → d.m.yyyy
+              const [y, m, day] = d.split('-');
+              const dateStr = `${parseInt(day,10)}.${parseInt(m,10)}.${y}`;
+              const trip = prevKm != null && r.km != null ? Math.max(0, r.km - prevKm) : 0;
+              if (r.km != null) prevKm = r.km;
+
+              if (r._kind === 'maint') {
+                const qty = r.quantity != null ? String(r.quantity).replace('.', ',') : '0';
+                rows.push([dateStr, r.km || '', trip, qty, String(r.cost ?? 0).replace('.', ','), 'EUR', '0', '12', r.description || '']);
+              } else {
+                const fuelSort = r.type === 'benzina' ? '7' : (r.type === 'gasolio' ? '3' : '13');
+                const qty = String(r.quantity ?? 0).replace('.', ',');
+                const price = String(r.cost ?? 0).replace('.', ',');
+                rows.push([dateStr, r.km || '', trip, qty, price, 'EUR', '1', fuelSort, r.note || '']);
+              }
+            });
+            filename = `SpritMonitor_${selectedVehicle.value.name}.csv`;
+          }
+          const csv = rows.map(r => r.map(c => {
+            const s = String(c);
+            return delim === ';' ? s : `"${s.replace(/"/g, '""')}"`;
+          }).join(delim)).join('\n');
+          const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = filename;
+          a.click();
+        }
+
+        onMounted(() => {
+          if (tab.value === 'statistiche') nextTick(updateChart);
+        });
+
+        return {
+          vehicles, selectedVehicleId, selectedVehicle, tab,
+          fuelLogs, fuelLogsSorted, maintLogs, maintLogsSorted, stats,
+          showVehicleModal, showFuelModal, showMaintModal,
+          editingVehicle, editingFuel, editingMaint,
+          vehicleForm, fuelForm, maintForm, chartCanvas,
+          importMessage, importOk,
+          onVehicleChange, formatDate, formatMoney, fuelLabel,
+          openVehicleModal, saveVehicle, deleteVehicle,
+          openFuelModal, saveFuel, deleteFuel, calcPriceFromCost, calcCostFromPrice,
+          openMaintModal, saveMaint, deleteMaint,
+          exportCSV, importSpritMonitorCSV
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
