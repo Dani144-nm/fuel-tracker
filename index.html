@@ -169,6 +169,7 @@
                   <th>Prezzo</th>
                   <th>Spesa</th>
                   <th>Consumo</th>
+                  <th>GPS</th>
                   <th></th>
                 </tr>
               </thead>
@@ -181,6 +182,14 @@
                   <td>{{ formatMoney(f.price) }}/{{ f.unit }}</td>
                   <td>{{ formatMoney(f.cost) }}</td>
                   <td>{{ f.consumption != null ? f.consumption + ' km/' + f.unit : '—' }}</td>
+                  <td>
+                    <a v-if="f.lat != null && f.lng != null"
+                       :href="'https://www.google.com/maps?q=' + f.lat + ',' + f.lng"
+                       target="_blank" rel="noopener"
+                       title="Apri su mappa"
+                       style="color:var(--primary);text-decoration:none;font-size:0.85rem">📍</a>
+                    <span v-else style="color:var(--text-muted)">—</span>
+                  </td>
                   <td class="actions">
                     <button class="btn btn-ghost btn-sm" @click="openFuelModal(f)">✏️</button>
                     <button class="btn btn-ghost btn-sm" @click="deleteFuel(f.id)">🗑️</button>
@@ -333,20 +342,23 @@
           </select>
         </div>
         <div class="form-row">
-          <label>Quantità * ({{ fuelForm.type === 'metano' ? 'kg' : 'litri' }})</label>
-          <input type="number" v-model.number="fuelForm.quantity" min="0" step="0.01" />
+          <label>Quantità ({{ fuelForm.type === 'metano' ? 'kg' : 'litri' }}) — oppure solo spesa + prezzo</label>
+          <input type="number" v-model.number="fuelForm.quantity" min="0" step="0.01" @input="onFuelFieldChange('quantity')" />
         </div>
         <div class="form-row">
           <label>Spesa totale (€)</label>
-          <input type="number" v-model.number="fuelForm.cost" min="0" step="0.01" @input="calcPriceFromCost" />
+          <input type="number" v-model.number="fuelForm.cost" min="0" step="0.01" @input="onFuelFieldChange('cost')" />
         </div>
         <div class="form-row">
           <label>Prezzo unitario (€/{{ fuelForm.type === 'metano' ? 'kg' : 'l' }})</label>
-          <input type="number" v-model.number="fuelForm.price" min="0" step="0.001" @input="calcCostFromPrice" />
+          <input type="number" v-model.number="fuelForm.price" min="0" step="0.001" @input="onFuelFieldChange('price')" />
         </div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem">
+          Compila almeno due tra quantità, spesa e prezzo: il terzo si calcola da solo. Alla registrazione verranno salvate anche le coordinate GPS (se autorizzate).
+        </p>
         <div class="modal-actions">
           <button class="btn btn-ghost" @click="showFuelModal=false">Annulla</button>
-          <button class="btn btn-primary" @click="saveFuel">Salva</button>
+          <button class="btn btn-primary" @click="saveFuel" :disabled="savingFuel">{{ savingFuel ? 'Salvataggio…' : 'Salva' }}</button>
         </div>
       </div>
     </div>
@@ -436,6 +448,7 @@
         const maintForm = ref({ date: '', km: null, description: '', category: '', cost: null });
         const importMessage = ref('');
         const importOk = ref(true);
+        const savingFuel = ref(false);
 
         const chartCanvas = ref(null);
         let chartInstance = null;
@@ -576,50 +589,123 @@
               quantity: f.quantity,
               type: f.type,
               cost: f.cost,
-              price: f.price
+              price: f.price,
+              lat: f.lat,
+              lng: f.lng
             };
           } else {
             const today = new Date().toISOString().slice(0, 10);
-            fuelForm.value = { date: today, km: null, quantity: null, type: 'benzina', cost: null, price: null };
+            fuelForm.value = { date: today, km: null, quantity: null, type: 'benzina', cost: null, price: null, lat: null, lng: null };
           }
           showFuelModal.value = true;
         }
-        function calcPriceFromCost() {
-          const q = fuelForm.value.quantity;
-          const c = fuelForm.value.cost;
-          if (q > 0 && c != null) fuelForm.value.price = +(c / q).toFixed(3);
-        }
-        function calcCostFromPrice() {
-          const q = fuelForm.value.quantity;
-          const p = fuelForm.value.price;
-          if (q > 0 && p != null) fuelForm.value.cost = +(q * p).toFixed(2);
-        }
-        function saveFuel() {
+
+        // Calcolo automatico: qualsiasi due campi tra quantità / spesa / prezzo → il terzo
+        function onFuelFieldChange(changed) {
           const f = fuelForm.value;
-          if (!f.date || f.km == null || !f.quantity || f.quantity <= 0) {
-            return alert('Compila data, km e quantità');
+          const q = f.quantity;
+          const c = f.cost;
+          const p = f.price;
+          if (changed === 'cost' || changed === 'price') {
+            if (c != null && c > 0 && p != null && p > 0) {
+              f.quantity = +(c / p).toFixed(3);
+            } else if (changed === 'cost' && q > 0 && c != null) {
+              f.price = +(c / q).toFixed(3);
+            } else if (changed === 'price' && q > 0 && p != null) {
+              f.cost = +(q * p).toFixed(2);
+            }
+          } else if (changed === 'quantity') {
+            if (q > 0 && c != null && (p == null || p === 0)) {
+              f.price = +(c / q).toFixed(3);
+            } else if (q > 0 && p != null && (c == null || c === 0)) {
+              f.cost = +(q * p).toFixed(2);
+            } else if (q > 0 && c != null && p != null) {
+              // quantità modificata a mano: ricalcola spesa da prezzo
+              f.cost = +(q * p).toFixed(2);
+            }
           }
-          const unit = f.type === 'metano' ? 'kg' : 'l';
-          const payload = {
-            id: editingFuel.value?.id || uid(),
-            vehicleId: selectedVehicleId.value,
-            date: f.date,
-            km: f.km,
-            quantity: f.quantity,
-            type: f.type,
-            unit,
-            cost: f.cost ?? (f.price != null ? +(f.quantity * f.price).toFixed(2) : 0),
-            price: f.price ?? (f.cost != null && f.quantity ? +(f.cost / f.quantity).toFixed(3) : 0)
-          };
-          if (editingFuel.value) {
-            const idx = allFuel.value.findIndex(x => x.id === editingFuel.value.id);
-            if (idx >= 0) allFuel.value[idx] = payload;
-          } else {
-            allFuel.value.push(payload);
+        }
+
+        function getGPS() {
+          return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+              resolve({ lat: null, lng: null });
+              return;
+            }
+            navigator.geolocation.getCurrentPosition(
+              (pos) => resolve({
+                lat: +pos.coords.latitude.toFixed(6),
+                lng: +pos.coords.longitude.toFixed(6)
+              }),
+              () => resolve({ lat: null, lng: null }),
+              { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+            );
+          });
+        }
+
+        async function saveFuel() {
+          const f = fuelForm.value;
+          // Completa i campi mancanti prima della validazione
+          if ((f.quantity == null || f.quantity <= 0) && f.cost > 0 && f.price > 0) {
+            f.quantity = +(f.cost / f.price).toFixed(3);
           }
-          persist();
-          showFuelModal.value = false;
-          nextTick(updateChart);
+          if ((f.cost == null || f.cost === 0) && f.quantity > 0 && f.price > 0) {
+            f.cost = +(f.quantity * f.price).toFixed(2);
+          }
+          if ((f.price == null || f.price === 0) && f.quantity > 0 && f.cost > 0) {
+            f.price = +(f.cost / f.quantity).toFixed(3);
+          }
+
+          if (!f.date || f.km == null) {
+            return alert('Compila data e km totali');
+          }
+          if (!f.quantity || f.quantity <= 0) {
+            return alert('Inserisci la quantità, oppure spesa e prezzo unitario (la quantità verrà calcolata)');
+          }
+
+          savingFuel.value = true;
+          try {
+            let lat = f.lat ?? null;
+            let lng = f.lng ?? null;
+            // Nuovo rifornimento: cattura GPS. In modifica: mantieni le coordinate già salvate
+            // (a meno che non ci fossero già, in tal caso non le sovrascriviamo)
+            if (!editingFuel.value) {
+              const gps = await getGPS();
+              lat = gps.lat;
+              lng = gps.lng;
+            }
+
+            const unit = f.type === 'metano' ? 'kg' : 'l';
+            const payload = {
+              id: editingFuel.value?.id || uid(),
+              vehicleId: selectedVehicleId.value,
+              date: f.date,
+              km: f.km,
+              quantity: f.quantity,
+              type: f.type,
+              unit,
+              cost: f.cost ?? 0,
+              price: f.price ?? 0,
+              lat,
+              lng
+            };
+            if (editingFuel.value) {
+              // preserva GPS se già presente e non ne abbiamo di nuovi
+              if (payload.lat == null && editingFuel.value.lat != null) {
+                payload.lat = editingFuel.value.lat;
+                payload.lng = editingFuel.value.lng;
+              }
+              const idx = allFuel.value.findIndex(x => x.id === editingFuel.value.id);
+              if (idx >= 0) allFuel.value[idx] = payload;
+            } else {
+              allFuel.value.push(payload);
+            }
+            persist();
+            showFuelModal.value = false;
+            nextTick(updateChart);
+          } finally {
+            savingFuel.value = false;
+          }
         }
         function deleteFuel(id) {
           if (!confirm('Eliminare questo rifornimento?')) return;
@@ -879,9 +965,9 @@
           if (!selectedVehicle.value) return;
           let rows, filename, delim = ',';
           if (type === 'fuel') {
-            rows = [['Data', 'Km', 'Quantità', 'Unità', 'Tipo', 'Prezzo', 'Spesa']];
+            rows = [['Data', 'Km', 'Quantità', 'Unità', 'Tipo', 'Prezzo', 'Spesa', 'Lat', 'Lng']];
             fuelLogsSorted.value.forEach(f => {
-              rows.push([f.date, f.km, f.quantity, f.unit, f.type, f.price, f.cost]);
+              rows.push([f.date, f.km, f.quantity, f.unit, f.type, f.price, f.cost, f.lat ?? '', f.lng ?? '']);
             });
             filename = `rifornimenti_${selectedVehicle.value.name}.csv`;
           } else if (type === 'maint') {
@@ -943,10 +1029,10 @@
           showVehicleModal, showFuelModal, showMaintModal,
           editingVehicle, editingFuel, editingMaint,
           vehicleForm, fuelForm, maintForm, chartCanvas,
-          importMessage, importOk,
+          importMessage, importOk, savingFuel,
           onVehicleChange, formatDate, formatMoney, fuelLabel,
           openVehicleModal, saveVehicle, deleteVehicle,
-          openFuelModal, saveFuel, deleteFuel, calcPriceFromCost, calcCostFromPrice,
+          openFuelModal, saveFuel, deleteFuel, onFuelFieldChange,
           openMaintModal, saveMaint, deleteMaint,
           exportCSV, importSpritMonitorCSV
         };
