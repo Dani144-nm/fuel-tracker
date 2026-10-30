@@ -121,6 +121,39 @@
       th, td { padding: 0.5rem 0.35rem; font-size: 0.82rem; }
       .stat .value { font-size: 1.2rem; }
     }
+  
+    /* --- restyling --- */
+    body{background:radial-gradient(1000px 500px at 80% -10%,rgba(59,130,246,.18),transparent),radial-gradient(800px 400px at -10% 10%,rgba(16,185,129,.10),transparent),var(--bg);background-attachment:fixed}
+    header{position:sticky;top:0;z-index:50;background:rgba(15,20,25,.78);backdrop-filter:blur(12px);margin:-1.25rem -1.25rem 1.5rem;padding:1rem 1.25rem;border-radius:0 0 var(--radius) var(--radius)}
+    header h1{letter-spacing:-.02em}
+    header h1 span{background:linear-gradient(90deg,#60a5fa,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .card{box-shadow:0 8px 24px rgba(0,0,0,.25);background:linear-gradient(180deg,var(--surface),#162030)}
+    .tabs{margin-bottom:1.25rem;border:1px solid var(--border)}
+    .tab{flex:1;text-align:center}
+    .tab.active{background:linear-gradient(135deg,#3b82f6,#6366f1);box-shadow:0 4px 12px rgba(59,130,246,.4)}
+    .btn-primary{background:linear-gradient(135deg,#3b82f6,#6366f1)}
+    .btn-primary:hover{filter:brightness(1.1);background:linear-gradient(135deg,#3b82f6,#6366f1)}
+    .stat{transition:transform .15s,border-color .15s}
+    .stat:hover{transform:translateY(-2px);border-color:var(--primary)}
+    .stat .value{background:linear-gradient(90deg,#60a5fa,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .modal-overlay{backdrop-filter:blur(4px);animation:fade .15s}
+    .modal{animation:pop .2s;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+    @keyframes fade{from{opacity:0}}
+    @keyframes pop{from{opacity:0;transform:translateY(12px) scale(.98)}}
+    tr:hover td{background:rgba(59,130,246,.06)}
+    .chips{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}
+    .chip{padding:.35rem .8rem;border-radius:999px;border:1px solid var(--border);background:var(--bg);color:var(--text-muted);font-size:.8rem;font-weight:500;cursor:pointer;transition:all .15s}
+    .chip:hover{color:var(--text)}
+    .chip.active{background:rgba(59,130,246,.2);border-color:var(--primary);color:#93c5fd}
+    .warn{color:var(--warning);font-size:.8rem;margin:-.4rem 0 .8rem}
+    .hint{font-size:.85rem;color:var(--text-muted);margin-bottom:.9rem}
+    .hint a{color:var(--primary)}
+    .dot{width:8px;height:8px;border-radius:50%;background:#64748b;display:inline-block;margin-left:.35rem}
+    .dot.idle{background:#60a5fa}.dot.ok{background:var(--success)}.dot.busy{background:var(--warning)}.dot.err{background:var(--danger)}
+    .toasts{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:.5rem}
+    .toast{background:var(--surface2);border:1px solid var(--success);padding:.6rem 1rem;border-radius:10px;font-size:.9rem;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:pop .2s}
+    .toast.err{border-color:var(--danger)}
+    @media (max-width:600px){header{margin:-.75rem -.75rem 1rem;padding:.75rem}}
   </style>
 </head>
 <body>
@@ -134,6 +167,7 @@
         </select>
         <button class="btn btn-ghost btn-sm" @click="openVehicleModal()">+ Veicolo</button>
         <button v-if="selectedVehicle" class="btn btn-ghost btn-sm" @click="openVehicleModal(selectedVehicle)">✏️</button>
+        <button class="btn btn-ghost btn-sm" @click="showSyncModal=true" title="Sincronizzazione online">☁️<span class="dot" :class="syncStatus"></span></button>
       </div>
     </header>
 
@@ -243,10 +277,12 @@
       <div v-show="tab==='statistiche'">
         <div class="card">
           <h2>Panoramica – {{ selectedVehicle.name }}</h2>
+          <div class="chips"><button v-for="p in presets" :key="p[0]" class="chip" :class="{active: period===p[0]}" @click="period=p[0]">{{ p[1] }}</button></div>
+          <div v-if="period==='custom'" class="grid grid-2" style="margin-bottom:1rem"><div><label>Dal</label><input type="date" v-model="customFrom" /></div><div><label>Al</label><input type="date" v-model="customTo" /></div></div>
           <div class="stats-grid">
             <div class="stat">
               <div class="value">{{ stats.totalKm.toLocaleString('it-IT') }}</div>
-              <div class="label">Km totali</div>
+              <div class="label">{{ isFiltered ? 'Km nel periodo' : 'Km totali' }}</div>
             </div>
             <div class="stat">
               <div class="value">{{ stats.avgConsumption }}</div>
@@ -332,6 +368,7 @@
         <div class="form-row">
           <label>Km totali *</label>
           <input type="number" v-model.number="fuelForm.km" min="0" step="1" />
+          <p v-if="kmWarning" class="warn" style="margin-top:.4rem">⚠️ {{ kmWarning }}</p>
         </div>
         <div class="form-row">
           <label>Tipo carburante *</label>
@@ -362,6 +399,26 @@
         </div>
       </div>
     </div>
+
+    <!-- MODAL SYNC -->
+    <div v-if="showSyncModal" class="modal-overlay" @click.self="showSyncModal=false">
+      <div class="modal">
+        <h3>☁️ Sincronizzazione online</h3>
+        <template v-if="!syncCfg.token">
+          <p class="hint">I dati vengono salvati in un <b>gist segreto</b> del tuo account GitHub e uniti tra i dispositivi. Crea un <a href="https://github.com/settings/tokens/new?scopes=gist&description=Fuel%20Tracker" target="_blank" rel="noopener">token classic con solo lo scope gist</a> e incollalo qui.</p>
+          <div class="form-row"><label>Token GitHub</label><input type="password" v-model="tokenInput" autocomplete="off" placeholder="ghp_…" /></div>
+          <div class="modal-actions"><button class="btn btn-ghost" @click="showSyncModal=false">Chiudi</button><button class="btn btn-primary" @click="connectSync">Connetti e sincronizza</button></div>
+        </template>
+        <template v-else>
+          <p class="hint">Stato: <b>{{ syncLabels[syncStatus] }}</b> · ultima sincronizzazione: {{ fmtTime(syncCfg.last) }}</p>
+          <p v-if="syncMsg" class="warn" style="margin-top:0">{{ syncMsg }}</p>
+          <label class="flex" style="color:var(--text);margin-bottom:.9rem"><input type="checkbox" style="width:auto" :checked="syncCfg.auto!==false" @change="toggleAuto" /> Sincronizza dopo ogni modifica</label>
+          <p class="hint">Il gist è segreto ma leggibile da chi ne conosce l'URL e contiene anche le coordinate GPS. Il token resta solo in questo browser.</p>
+          <div class="modal-actions"><button class="btn btn-danger" @click="disconnectSync">Scollega</button><button class="btn btn-ghost" @click="showSyncModal=false">Chiudi</button><button class="btn btn-primary" @click="syncNow(true)">Sincronizza ora</button></div>
+        </template>
+      </div>
+    </div>
+    <div class="toasts"><div v-for="t in toasts" :key="t.id" class="toast" :class="t.t">{{ t.m }}</div></div>
 
     <!-- MODAL MANUTENZIONE -->
     <div v-if="showMaintModal" class="modal-overlay" @click.self="showMaintModal=false">
@@ -418,11 +475,33 @@
     function loadData() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) { const d = JSON.parse(raw); (d.fuel || []).forEach(f => delete f.consumption); return d; }
       } catch (e) {}
       return { vehicles: [], fuel: [], maint: [] };
     }
 
+    const SYNC_KEY = 'fuel-tracker-sync-v1';
+    const GIST_FILE = 'fuel-tracker.json';
+    function fmtTime(ts) { return ts ? new Date(ts).toLocaleString('it-IT') : '—'; }
+    function clean(d) { return { ...d, fuel: d.fuel.map(({ consumption, ...r }) => r) }; }
+    function sig(d) {
+      return [...(d.vehicles || []), ...(d.fuel || []), ...(d.maint || [])].map(x => x.id + ':' + (x.updatedAt || 0))
+        .concat((d.deleted || []).map(t => 'd' + t.id + ':' + t.at)).sort().join('|');
+    }
+    // Unione record-per-record: vince updatedAt più recente; le eliminazioni sono tombstone
+    function mergeData(a, b) {
+      const tomb = new Map();
+      [...(a.deleted || []), ...(b.deleted || [])].forEach(t => { const p = tomb.get(t.id); if (!p || t.at > p.at) tomb.set(t.id, t); });
+      const list = (la, lb) => {
+        const map = new Map();
+        [...(lb || []), ...(la || [])].forEach(x => { const p = map.get(x.id); if (!p || (x.updatedAt || 0) >= (p.updatedAt || 0)) map.set(x.id, x); });
+        return [...map.values()].filter(x => { const t = tomb.get(x.id); return !t || (x.updatedAt || 0) > t.at; });
+      };
+      const vehicles = list(a.vehicles, b.vehicles);
+      const ids = new Set(vehicles.map(v => v.id));
+      return { vehicles, fuel: list(a.fuel, b.fuel).filter(f => ids.has(f.vehicleId)),
+               maint: list(a.maint, b.maint).filter(m => ids.has(m.vehicleId)), deleted: [...tomb.values()] };
+    }
     function saveData(data) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     }
@@ -433,6 +512,8 @@
         const vehicles = ref(data.vehicles || []);
         const allFuel = ref(data.fuel || []);
         const allMaint = ref(data.maint || []);
+        const deleted = ref(data.deleted || []);
+        function tomb(id) { deleted.value.push({ id, at: Date.now() }); }
         const selectedVehicleId = ref(vehicles.value[0]?.id || '');
         const tab = ref('rifornimenti');
 
@@ -452,6 +533,44 @@
 
         const chartCanvas = ref(null);
         let chartInstance = null;
+
+        // --- filtro periodo ---
+        const period = ref('all'), customFrom = ref(''), customTo = ref('');
+        const presets = [['all','Tutto'],['30d','30 giorni'],['3m','3 mesi'],['12m','12 mesi'],['ytd','Quest\'anno'],['ly','Anno scorso'],['custom','Personalizzato']];
+        const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const range = computed(() => {
+          const t = new Date(), y = t.getFullYear(), p = period.value;
+          const back = (m, d = 0) => { const x = new Date(t); x.setMonth(x.getMonth() - m); x.setDate(x.getDate() - d); return ymd(x); };
+          if (p === '30d') return { from: back(0, 30), to: null };
+          if (p === '3m') return { from: back(3), to: null };
+          if (p === '12m') return { from: back(12), to: null };
+          if (p === 'ytd') return { from: y + '-01-01', to: null };
+          if (p === 'ly') return { from: (y - 1) + '-01-01', to: (y - 1) + '-12-31' };
+          if (p === 'custom') return { from: customFrom.value || null, to: customTo.value || null };
+          return { from: null, to: null };
+        });
+        const isFiltered = computed(() => !!(range.value.from || range.value.to));
+        const dateIn = d => (!range.value.from || d >= range.value.from) && (!range.value.to || d <= range.value.to);
+        const inPeriod = arr => arr.filter(x => dateIn(x.date));
+        function withBaseline(fs) { // aggiunge l'ultimo rifornimento prima del periodo come punto di partenza
+          const s = [...fs].sort((a, b) => a.km - b.km);
+          if (!range.value.from) return s;
+          const prev = fuelLogs.value.filter(f => f.date < range.value.from).sort((a, b) => b.km - a.km)[0];
+          return prev ? [prev, ...s] : s;
+        }
+        watch(range, () => nextTick(updateChart));
+
+        // --- validazione odometro ---
+        function kmCheck(date, km, excludeId) {
+          if (km == null || km === '' || !date) return '';
+          const o = fuelLogs.value.filter(f => f.id !== excludeId);
+          const before = o.filter(f => f.date < date).sort((a, b) => b.date.localeCompare(a.date) || b.km - a.km)[0];
+          const after = o.filter(f => f.date > date).sort((a, b) => a.date.localeCompare(b.date) || a.km - b.km)[0];
+          if (before && km < before.km) return `Km inferiori al rifornimento del ${formatDate(before.date)} (${before.km.toLocaleString('it-IT')} km)`;
+          if (after && km > after.km) return `Km superiori al rifornimento del ${formatDate(after.date)} (${after.km.toLocaleString('it-IT')} km)`;
+          return '';
+        }
+        const kmWarning = computed(() => kmCheck(fuelForm.value.date, fuelForm.value.km, editingFuel.value?.id));
 
         const selectedVehicle = computed(() =>
           vehicles.value.find(v => v.id === selectedVehicleId.value) || null
@@ -485,8 +604,8 @@
         );
 
         const stats = computed(() => {
-          const fuels = fuelLogs.value;
-          const maints = maintLogs.value;
+          const fuels = inPeriod(fuelLogs.value);
+          const maints = inPeriod(maintLogs.value);
           let totalKm = 0;
           if (fuels.length) {
             totalKm = Math.max(...fuels.map(f => f.km));
@@ -497,7 +616,7 @@
 
           // average consumption: total km driven / total quantity (from first to last)
           let avgConsumption = '—';
-          const sorted = [...fuels].sort((a, b) => a.km - b.km);
+          const sorted = withBaseline(fuels);
           if (sorted.length >= 2) {
             const kmDriven = sorted[sorted.length - 1].km - sorted[0].km;
             // quantity of all but first (or all after first)
@@ -505,6 +624,7 @@
             if (qty > 0) avgConsumption = (kmDriven / qty).toFixed(2);
           }
 
+          if (isFiltered.value) totalKm = sorted.length >= 2 ? sorted[sorted.length - 1].km - sorted[0].km : 0;
           const costPerKm = totalKm > 0 ? (totalCost / totalKm) : 0;
 
           return {
@@ -518,9 +638,10 @@
         });
 
         function persist() {
+          scheduleSync();
           saveData({
-            vehicles: vehicles.value,
-            fuel: allFuel.value,
+            vehicles: vehicles.value, deleted: deleted.value,
+            fuel: allFuel.value.map(({ consumption, ...r }) => r),
             maint: allMaint.value
           });
         }
@@ -558,11 +679,11 @@
           if (editingVehicle.value) {
             const idx = vehicles.value.findIndex(x => x.id === editingVehicle.value.id);
             if (idx >= 0) {
-              vehicles.value[idx] = { ...vehicles.value[idx], ...vehicleForm.value };
+              vehicles.value[idx] = { ...vehicles.value[idx], ...vehicleForm.value, updatedAt: Date.now() };
             }
           } else {
             const id = uid();
-            vehicles.value.push({ id, ...vehicleForm.value });
+            vehicles.value.push({ id, ...vehicleForm.value, updatedAt: Date.now() });
             selectedVehicleId.value = id;
           }
           persist();
@@ -571,6 +692,7 @@
         function deleteVehicle() {
           if (!confirm('Eliminare il veicolo e tutti i suoi dati?')) return;
           const id = editingVehicle.value.id;
+          tomb(id); allFuel.value.filter(f => f.vehicleId === id).forEach(f => tomb(f.id)); allMaint.value.filter(m => m.vehicleId === id).forEach(m => tomb(m.id));
           vehicles.value = vehicles.value.filter(v => v.id !== id);
           allFuel.value = allFuel.value.filter(f => f.vehicleId !== id);
           allMaint.value = allMaint.value.filter(m => m.vehicleId !== id);
@@ -663,6 +785,7 @@
             return alert('Inserisci la quantità, oppure spesa e prezzo unitario (la quantità verrà calcolata)');
           }
 
+          if (kmWarning.value && !confirm(kmWarning.value + '.\nSalvare comunque?')) return;
           savingFuel.value = true;
           try {
             let lat = f.lat ?? null;
@@ -696,9 +819,9 @@
                 payload.lng = editingFuel.value.lng;
               }
               const idx = allFuel.value.findIndex(x => x.id === editingFuel.value.id);
-              if (idx >= 0) allFuel.value[idx] = payload;
+              payload.updatedAt = Date.now(); if (idx >= 0) allFuel.value[idx] = payload;
             } else {
-              allFuel.value.push(payload);
+              payload.updatedAt = Date.now(); allFuel.value.push(payload);
             }
             persist();
             showFuelModal.value = false;
@@ -709,7 +832,7 @@
         }
         function deleteFuel(id) {
           if (!confirm('Eliminare questo rifornimento?')) return;
-          allFuel.value = allFuel.value.filter(f => f.id !== id);
+          tomb(id); allFuel.value = allFuel.value.filter(f => f.id !== id);
           persist();
           nextTick(updateChart);
         }
@@ -733,6 +856,8 @@
         }
         function saveMaint() {
           const m = maintForm.value;
+          const kw = kmCheck(m.date, m.km, null);
+          if (kw && !confirm(kw + '.\nSalvare comunque?')) return;
           if (!m.date || !m.description.trim() || m.cost == null) {
             return alert('Compila data, descrizione e spesa');
           }
@@ -747,16 +872,16 @@
           };
           if (editingMaint.value) {
             const idx = allMaint.value.findIndex(x => x.id === editingMaint.value.id);
-            if (idx >= 0) allMaint.value[idx] = payload;
+            payload.updatedAt = Date.now(); if (idx >= 0) allMaint.value[idx] = payload;
           } else {
-            allMaint.value.push(payload);
+            payload.updatedAt = Date.now(); allMaint.value.push(payload);
           }
           persist();
           showMaintModal.value = false;
         }
         function deleteMaint(id) {
           if (!confirm('Eliminare questa spesa?')) return;
-          allMaint.value = allMaint.value.filter(m => m.id !== id);
+          tomb(id); allMaint.value = allMaint.value.filter(m => m.id !== id);
           persist();
         }
 
@@ -773,6 +898,7 @@
             const prev = sorted[i - 1];
             const curr = sorted[i];
             if (curr.quantity > 0 && curr.km > prev.km) {
+              if (!dateIn(curr.date)) continue;
               labels.push(formatDate(curr.date));
               values.push(+((curr.km - prev.km) / curr.quantity).toFixed(2));
             }
@@ -786,7 +912,7 @@
                 label: 'Consumo (km/unità)',
                 data: values,
                 borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59,130,246,0.15)',
+                backgroundColor: (() => { const g = chartCanvas.value.getContext('2d').createLinearGradient(0, 0, 0, 260); g.addColorStop(0, 'rgba(59,130,246,0.35)'); g.addColorStop(1, 'rgba(59,130,246,0)'); return g; })(),
                 fill: true,
                 tension: 0.3,
                 pointRadius: 4
@@ -803,6 +929,74 @@
             }
           });
         }
+
+        // --- sync online (gist segreto GitHub) ---
+        const syncCfg = ref(JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'));
+        const syncStatus = ref(syncCfg.value.token ? 'idle' : 'off');
+        const syncLabels = { off: 'non collegato', idle: 'collegato', busy: 'sincronizzazione…', ok: 'sincronizzato', err: 'errore' };
+        const syncMsg = ref(''), showSyncModal = ref(false), tokenInput = ref(''), toasts = ref([]);
+        let syncing = false, pending = false, timer = null;
+        function notify(m, t = 'ok') { const o = { id: uid(), m, t }; toasts.value.push(o); setTimeout(() => { toasts.value = toasts.value.filter(x => x !== o); }, 3500); }
+        function saveCfg() { localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg.value)); }
+        function scheduleSync() {
+          if (!syncCfg.value.token || syncCfg.value.auto === false) return;
+          clearTimeout(timer); timer = setTimeout(() => syncNow(), 2500);
+        }
+        async function gh(path, opts = {}) {
+          const r = await fetch('https://api.github.com' + path, { cache: 'no-store', ...opts, headers: {
+            Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + syncCfg.value.token,
+            ...(opts.body ? { 'Content-Type': 'application/json' } : {}) } });
+          if (!r.ok) {
+            const e = new Error(r.status === 401 ? 'Token non valido o scaduto' : r.status === 403 ? 'Accesso negato o limite richieste GitHub' : 'Errore GitHub ' + r.status);
+            e.status = r.status; throw e;
+          }
+          return r.json();
+        }
+        async function syncNow(manual = false) {
+          if (!syncCfg.value.token) return;
+          if (syncing) { pending = true; return; }
+          syncing = true; syncStatus.value = 'busy';
+          try {
+            let id = syncCfg.value.gistId, remote = null;
+            if (!id) {
+              for (let p = 1; p <= 5 && !id; p++) {
+                const l = await gh('/gists?per_page=100&page=' + p);
+                id = (l.find(g => g.files && g.files[GIST_FILE]) || {}).id;
+                if (l.length < 100) break;
+              }
+            }
+            if (id) {
+              try {
+                const g = await gh('/gists/' + id), f = g.files[GIST_FILE];
+                remote = JSON.parse(f.truncated ? await (await fetch(f.raw_url, { cache: 'no-store' })).text() : f.content);
+              } catch (e) { if (e.status === 404) id = null; else throw e; }
+            }
+            const m = clean(mergeData({ vehicles: vehicles.value, fuel: allFuel.value, maint: allMaint.value, deleted: deleted.value }, remote || {}));
+            vehicles.value = m.vehicles; allFuel.value = m.fuel; allMaint.value = m.maint; deleted.value = m.deleted;
+            if (!vehicles.value.some(v => v.id === selectedVehicleId.value)) selectedVehicleId.value = vehicles.value[0]?.id || '';
+            saveData(m);
+            const body = JSON.stringify(m);
+            if (!id) id = (await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'Fuel Tracker – dati', public: false, files: { [GIST_FILE]: { content: body } } }) })).id;
+            else if (!remote || sig(m) !== sig(remote)) await gh('/gists/' + id, { method: 'PATCH', body: JSON.stringify({ files: { [GIST_FILE]: { content: body } } }) });
+            syncCfg.value = { ...syncCfg.value, gistId: id, last: Date.now() }; saveCfg();
+            syncStatus.value = 'ok'; syncMsg.value = '';
+            if (manual) notify('Sincronizzato ☁️');
+            nextTick(updateChart);
+          } catch (e) {
+            syncStatus.value = 'err'; syncMsg.value = e.message || String(e);
+            if (manual) notify(syncMsg.value, 'err');
+          } finally { syncing = false; if (pending) { pending = false; scheduleSync(); } }
+        }
+        async function connectSync() {
+          const t = tokenInput.value.trim(); if (!t) return;
+          syncCfg.value = { token: t, auto: true }; saveCfg(); tokenInput.value = '';
+          await syncNow(true);
+        }
+        function disconnectSync() {
+          if (!confirm('Scollegare la sincronizzazione su questo dispositivo? I dati restano sul gist e qui.')) return;
+          localStorage.removeItem(SYNC_KEY); syncCfg.value = {}; syncStatus.value = 'off';
+        }
+        function toggleAuto() { syncCfg.value = { ...syncCfg.value, auto: syncCfg.value.auto === false }; saveCfg(); }
 
         watch(tab, (t) => {
           if (t === 'statistiche') nextTick(updateChart);
@@ -897,7 +1091,7 @@
                 if (isMaint) {
                   allMaint.value.push({
                     id: uid(),
-                    vehicleId: vid,
+                    vehicleId: vid, updatedAt: Date.now(),
                     date,
                     km,
                     description: note || 'Spesa (importata da SpritMonitor)',
@@ -928,7 +1122,7 @@
 
                 allFuel.value.push({
                   id: uid(),
-                  vehicleId: vid,
+                  vehicleId: vid, updatedAt: Date.now(),
                   date,
                   km,
                   quantity,
@@ -1020,6 +1214,8 @@
         }
 
         onMounted(() => {
+          if (syncCfg.value.token) setTimeout(() => syncNow(), 400);
+          document.addEventListener('visibilitychange', () => { if (!document.hidden && syncCfg.value.token && Date.now() - (syncCfg.value.last || 0) > 30000) syncNow(); });
           if (tab.value === 'statistiche') nextTick(updateChart);
         });
 
@@ -1034,7 +1230,10 @@
           openVehicleModal, saveVehicle, deleteVehicle,
           openFuelModal, saveFuel, deleteFuel, onFuelFieldChange,
           openMaintModal, saveMaint, deleteMaint,
-          exportCSV, importSpritMonitorCSV
+          exportCSV, importSpritMonitorCSV,
+          period, presets, customFrom, customTo, isFiltered, kmWarning,
+          syncCfg, syncStatus, syncLabels, syncMsg, showSyncModal, tokenInput, toasts,
+          syncNow, connectSync, disconnectSync, toggleAuto, fmtTime
         };
       }
     }).mount('#app');
